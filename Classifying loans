@@ -1,0 +1,60 @@
+#Load required libraries:
+import itertools
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import NullFormatter
+import pandas as pd
+import numpy as np
+import matplotlib.ticker as ticker
+from sklearn import preprocessing
+%matplotlib inline
+
+#Download the dataset:
+!wget -O loan_train.csv https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-ML0101EN-SkillsNetwork/labs/FinalModule_Coursera/data/loan_train.csv
+
+#Load data from csv file:
+df = pd.read_csv('loan_train.csv')
+
+#Convert to date-time object
+df['due_date'] = pd.to_datetime(df['due_date'])
+df['effective_date'] = pd.to_datetime(df['effective_date'])
+
+## Data visualisation and pre-processing
+
+!conda install -c anaconda seaborn -y
+import seaborn as sns
+
+bins = np.linspace(df.Principal.min(), df.Principal.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'Principal', bins=bins, ec="k")
+g.axes[-1].legend()
+plt.show()
+
+bins = np.linspace(df.age.min(), df.age.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'age', bins=bins, ec="k")
+g.axes[-1].legend()
+plt.show()
+
+df['dayofweek'] = df['effective_date'].dt.dayofweek
+bins = np.linspace(df.dayofweek.min(), df.dayofweek.max(), 10)
+g = sns.FacetGrid(df, col="Gender", hue="loan_status", palette="Set1", col_wrap=2)
+g.map(plt.hist, 'dayofweek', bins=bins, ec="k")
+g.axes[-1].legend()
+plt.show()
+
+#From visualisation, it can be seen that people who get the loan at the end of the week don't pay it off. Hence the use of Feature binarization to set a threshold value less than day 4:
+df['weekend'] = df['dayofweek'].apply(lambda x: 1 if (x>3)  else 0)
+
+#Convert categorical features to numerical features:
+#Gender:
+df['Gender'].replace(to_replace=['male','female'], value=[0,1],inplace=True)
+
+#Education (using one hot encoding for education before a masters degree):
+X = df[['Principal','terms','age','Gender','weekend']]
+X = pd.concat([Feature,pd.get_dummies(df['education'])], axis=1)
+X.drop(['Master or Above'], axis = 1,inplace=True)
+
+#Normalise data:
+X= preprocessing.StandardScaler().fit(X).transform(X)
+
