@@ -58,3 +58,148 @@ X.drop(['Master or Above'], axis = 1,inplace=True)
 #Normalise data:
 X= preprocessing.StandardScaler().fit(X).transform(X)
 
+## Model building
+
+#Train-Test Split
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+### KNN model
+#Training
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn import metrics
+
+Ks = 12
+mean_acc = np.zeros((Ks-1))
+std_acc = np.zeros((Ks-1))
+ConfustionMtx=[];
+for n in range(1,Ks):
+    neigh = KNeighborsClassifier(n_neighbors=n).fit(X_train, y_train)
+    yhat = neigh.predict(X_test)
+    mean_acc[n-1] = metrics.accuracy_score(y_test, yhat)
+    std_acc[n-1] = np.std(yhat==y_test)/np.sqrt(yhat.shape[0])
+mean_acc
+
+plt.plot(range(1,Ks),mean_acc)
+plt.fill_between(range(1,Ks),mean_acc - 1 * std_acc,mean_acc + 1 * std_acc, alpha=0.10)
+plt.legend(('Accuracy ', '+/- 3xstd'))
+plt.ylabel('Accuracy ')
+plt.xlabel('Number of Neighbors (K)')
+plt.tight_layout()
+plt.show()
+
+print( "The best accuracy was with", mean_acc.max(), "with k=", mean_acc.argmax()+1) 
+
+neigh = KNeighborsClassifier(n_neighbors=mean_acc.argmax()+1).fit(X_train, y_train)
+
+### Decision tree model
+from sklearn.tree import DecisionTreeClassifier
+import matplotlib.image as mpimg
+from sklearn import tree
+modeltree = DecisionTreeClassifier(criterion="entropy")
+modeltree.fit(X_train, y_train)
+
+### Support vector machine model
+import pylab as pl
+import scipy.optimize as opt
+from sklearn import preprocessing
+from sklearn import svm
+clf = svm.SVC(kernel="sigmoid")
+clf.fit(X_train, y_train)
+
+### Logistic regression model
+from sklearn.linear_model import LogisticRegression
+LR = LogisticRegression(C=0.01, solver="liblinear").fit(X_train,y_train)
+yhat = LR.predict(X_test)
+yhat_prob = LR.predict_proba(X_test)
+
+## Model evaluation using test set
+from sklearn.metrics import jaccard_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import log_loss
+
+#Download and load test set:
+!wget -O loan_test.csv https://s3-api.us-geo.objectstorage.softlayer.net/cf-courses-data/CognitiveClass/ML0101ENv3/labs/loan_test.csv
+test_df = pd.read_csv('loan_test.csv')
+
+### Test set pre-processing
+#Convert categorical features to numerical features:
+#Gender:
+test_df['Gender'] = test_df['Gender'].map(dict(zip(['male','female'],[0,1])))
+
+#Education:
+test_feature = test_df[['Principal','terms','age','Gender','weekend']]
+test_feature = pd.concat([test_feature,pd.get_dummies(test_df['education'])], axis=1)
+test_feature.drop(['Master or Above'], axis = 1,inplace=True)
+
+#normalize the test data
+TestX = preprocessing.StandardScaler().fit(test_feature[['Principal','terms','age','Gender','weekend','Bechalor', 'High School or Below', 'college']]).transform(test_feature[['Principal','terms','age','Gender','weekend','Bechalor', 'High School or Below', 'college']])
+TestX[0:5]
+# and target result
+TestY = test_df['loan_status'].values
+TestY[0:5]
+
+#preparing model input data 
+#X and Y to dataframe:
+TestX = pd.DataFrame(TestX)
+TestX.columns = ['Principal','terms','age','Gender','weekend','Bechalor', 'High School or Below', 'college']
+
+TestY = pd.DataFrame(TestY)
+TestY.columns = ['loan_status']
+
+#Make predictions, using each model:
+
+knn_pred=neigh.predict(TestX)
+tree_pred = modeltree.predict(TestX)
+svm_pred = clf.predict(TestX)
+log_pred=LR.predict(TestX)
+proba=LR.predict_proba(TestX)
+
+#Predictions to dataframes, for the purpose of evaluation.
+
+knn_pred = pd.DataFrame(knn_pred)
+knn_pred.columns = ['loan_status']
+
+tree_pred = pd.DataFrame(tree_pred)
+tree_pred.columns = ['loan_status']
+
+svm_pred = pd.DataFrame(svm_pred)
+svm_pred.columns = ['loan_status']
+
+log_pred = pd.DataFrame(log_pred)
+log_pred.columns = ['loan_status']
+
+#Convert 'PAIDOFF' and 'COLLECTION' into 0 and 1 respectively, for the purpose of evaluation:
+TestY['loan_status'] = TestY['loan_status'].map(dict(zip(['PAIDOFF','COLLECTION'],[0,1])))
+knn_pred['loan_status'] = knn_pred['loan_status'].map(dict(zip(['PAIDOFF','COLLECTION'],[0,1])))
+tree_pred['loan_status'] = tree_pred['loan_status'].map(dict(zip(['PAIDOFF','COLLECTION'],[0,1])))
+svm_pred['loan_status'] = svm_pred['loan_status'].map(dict(zip(['PAIDOFF','COLLECTION'],[0,1])))
+log_pred['loan_status'] = log_pred['loan_status'].map(dict(zip(['PAIDOFF','COLLECTION'],[0,1])))
+
+#Calculate the accuracy of each model using different evaluation metrics:
+jc1=jaccard_score(TestY, knn_pred)
+fs1=f1_score(TestY, knn_pred, average='weighted')
+jc2=jaccard_score(TestY, tree_pred)
+fs2=f1_score(TestY, tree_pred, average='weighted')
+jc3=jaccard_score(TestY, svm_pred)
+fs3=f1_score(TestY, svm_pred, average='weighted')
+jc4=jaccard_score(TestY, log_pred)
+fs4=f1_score(TestY, log_pred, average='weighted')  
+ll4=log_loss(TestY, proba)
+
+#Compare models against evaluation metrics in a dataframe:
+list_jc = [jc1, jc2, jc3, jc4]
+list_fs = [fs1, fs2, fs3, fs4]
+list_ll = ['NA', 'NA', 'NA', ll4]
+
+df = pd.DataFrame(list_jc, index=['KNN','Decision Tree','SVM','Logistic Regression'])
+df.columns = ['Jaccard']
+df.insert(loc=1, column='F1-score', value=list_fs)
+df.insert(loc=2, column='LogLoss', value=list_ll)
+df.columns.name = 'Algorithm'
+df
+
+
+
+
+
